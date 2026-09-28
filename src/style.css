@@ -29,6 +29,7 @@ button { font: inherit; color: inherit; }
   font-family: var(--serif); font-style: italic; font-weight: 400;
   font-size: clamp(56px, 7.5vw, 112px); line-height: 0.86; letter-spacing: -0.025em; margin: 18px 0 18px -3px;
 }
+.masthead h1 span { display: block; }
 .masthead p { font-family: var(--serif); font-size: 16px; line-height: 1.5; color: var(--ink-2); margin: 0; max-width: 240px; }
 
 .status {
@@ -107,7 +108,7 @@ button { font: inherit; color: inherit; }
 @media (max-width: 720px) {
   .masthead { left: 20px; top: max(18px, env(safe-area-inset-top)); }
   .masthead h1 { font-size: 46px; margin: 10px 0 0; }
-  .masthead h1 br { display: none; }
+  .masthead h1 span { display: inline; }
   .masthead p { display: none; }
   .status { right: 16px; top: max(18px, env(safe-area-inset-top)); }
   .hint { left: 20px; right: 20px; bottom: auto; top: 118px; font-size: 14px; }

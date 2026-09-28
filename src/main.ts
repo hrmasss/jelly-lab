@@ -222,7 +222,8 @@ SHAPES.forEach((shape, i) => {
   const p = shape.palettes[0];
   blob.style.background = p.top ? `linear-gradient(${p.top.color} 0 34%, ${p.color} 34%)` : p.color;
   const name = document.createElement('span');
-  name.textContent = shape.name.replace('Gummy ', '').replace('Jelly ', '');
+  const short = shape.name.replace('Gummy ', '').replace('Jelly ', '');
+  name.textContent = short[0].toUpperCase() + short.slice(1);
   b.append(blob, name);
   b.addEventListener('click', () => { spawn(shape); hideHint(); });
   shelf.append(b);

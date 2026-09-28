@@ -74,14 +74,25 @@ export function createStage(canvas: HTMLCanvasElement, fence: number, beforeCont
   controls.maxPolarAngle = 1.42;
   controls.update();
 
+  // Keep about 38 degrees of horizontal view on tall screens: widen the lens up to 60 degrees, then back off.
+  const HFOV = (38 * Math.PI) / 180, MAX_VFOV = (60 * Math.PI) / 180;
+  const fitFov = (aspect: number) => Math.max(32, Math.min(60, (2 * Math.atan(Math.tan(HFOV / 2) / aspect) * 180) / Math.PI));
   const resize = () => {
     const w = canvas.clientWidth, h = canvas.clientHeight;
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
-    // Keep the whole plate in view on tall phone screens.
-    camera.fov = w / h < 0.8 ? 48 : 32;
+    camera.fov = fitFov(w / h);
+    // On phones the controls sheet covers the bottom, so lift the scene into the space above it.
+    if (w < 720) camera.setViewOffset(w, h, 0, h * 0.1, w, h);
+    else camera.clearViewOffset();
     camera.updateProjectionMatrix();
   };
   resize();
+  const aspect = canvas.clientWidth / canvas.clientHeight;
+  const reach = Math.tan(HFOV / 2) / (Math.tan(MAX_VFOV / 2) * aspect);
+  if (reach > 1) {
+    camera.position.sub(controls.target).multiplyScalar(reach).add(controls.target);
+    controls.update();
+  }
   return { renderer, scene, camera, controls, resize };
 }
