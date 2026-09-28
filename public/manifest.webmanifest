@@ -1,0 +1,12 @@
+{
+  "name": "Jelly Lab",
+  "short_name": "Jelly Lab",
+  "description": "Drop soft jellies on a plate and squish them.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "any",
+  "background_color": "#efe9e1",
+  "theme_color": "#efe9e1",
+  "icons": [{ "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}
