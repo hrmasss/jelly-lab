@@ -1,5 +1,4 @@
 import { SoftBody } from './body.ts';
-import { sdfGrad } from './sdf.ts';
 
 export interface Grab {
   body: SoftBody;
@@ -146,7 +145,7 @@ function invert(m: Float64Array, out: Float64Array) {
 function collide(A: SoftBody, B: SoftBody, mu: number): number {
   const T = B.topo;
   const { o, h, dims, start, tets: cellTets } = T.grid;
-  const sdf = T.shape.sdf;
+  const field = T.field;
   const bb = B.aabb, R = B.rot, c = B.com, X0 = T.restCom;
   const P = A.pos, Pp = A.prev, Q = B.pos, Qp = B.prev, S = A.surf;
   const wA = A.invMass, wB = B.invMass;
@@ -164,7 +163,7 @@ function collide(A: SoftBody, B: SoftBody, mu: number): number {
     const X = R[0] * rx + R[3] * ry + R[6] * rz + X0[0];
     const Y = R[1] * rx + R[4] * ry + R[7] * rz + X0[1];
     const Z = R[2] * rx + R[5] * ry + R[8] * rz + X0[2];
-    if (sdf(X, Y, Z) > 1.5 * h + SKIN_GAP) continue;
+    if (field.sample(X, Y, Z) > 1.5 * h + SKIN_GAP) continue;
     // Start in a tet near the guess, then walk through the current mesh to the one that contains the node.
     const ci = Math.min(dims[0] - 1, Math.max(0, Math.floor((X - o[0]) / h)));
     const cj = Math.min(dims[1] - 1, Math.max(0, Math.floor((Y - o[1]) / h)));
@@ -197,9 +196,9 @@ function collide(A: SoftBody, B: SoftBody, mu: number): number {
     const Yr = b0 * rest[i0 * 3 + 1] + b1 * rest[i1 * 3 + 1] + b2 * rest[i2 * 3 + 1] + b3 * rest[i3 * 3 + 1];
     const Zr = b0 * rest[i0 * 3 + 2] + b1 * rest[i1 * 3 + 2] + b2 * rest[i2 * 3 + 2] + b3 * rest[i3 * 3 + 2];
     // Keep a thin gap: the smooth skin bulges slightly past the lattice, and would otherwise show through.
-    const d = sdf(Xr, Yr, Zr) - SKIN_GAP;
+    const d = field.sample(Xr, Yr, Zr) - SKIN_GAP;
     if (d >= 0) continue;
-    sdfGrad(sdf, Xr, Yr, Zr, grad, h * 0.02);
+    field.grad(Xr, Yr, Zr, grad);
     // World normal n = F^-T g with F = Ds Dm^-1, so n = Ds^-T (Dm^T g).
     const e1x = rest[i1 * 3] - rest[i0 * 3], e1y = rest[i1 * 3 + 1] - rest[i0 * 3 + 1], e1z = rest[i1 * 3 + 2] - rest[i0 * 3 + 2];
     const e2x = rest[i2 * 3] - rest[i0 * 3], e2y = rest[i2 * 3 + 1] - rest[i0 * 3 + 1], e2z = rest[i2 * 3 + 2] - rest[i0 * 3 + 2];

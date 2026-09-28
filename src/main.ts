@@ -41,9 +41,9 @@ worker.onmessage = (e: MessageEvent<FromSim>) => {
         const mesh = p && meshes.get(p.shape.id);
         if (!p || !mesh) continue;
         pending.delete(f.id);
-        v = new JellyView({ id: f.id, mesh, palette: p.shape.palettes[p.palette], pos: f.pos, aabb: f.aabb });
+        v = new JellyView({ id: f.id, shape: p.shape, mesh, palette: p.shape.palettes[p.palette], pos: f.pos, aabb: f.aabb });
         v.lattice.visible = state.mesh;
-        scene.add(v.mesh, v.lattice);
+        scene.add(v.group);
         views.set(f.id, v);
         updateStatus();
       }
@@ -75,7 +75,7 @@ send({ type: 'params', params: { fence: FENCE } });
 
 // ---------- spawning ----------
 
-function spawn(shape: ShapeDef, at?: { x: number; z: number }) {
+function spawn(shape: ShapeDef, at?: { x: number; z: number }, variant?: number) {
   if (order.length >= MAX_JELLIES) remove(order[0]);
   const a = Math.random() * Math.PI * 2, r = Math.sqrt(Math.random()) * 1.3;
   const x = at?.x ?? Math.cos(a) * r, z = at?.z ?? Math.sin(a) * r;
@@ -86,17 +86,23 @@ function spawn(shape: ShapeDef, at?: { x: number; z: number }) {
     if (x > bb[0] - 0.6 && x < bb[3] + 0.6 && z > bb[2] - 0.6 && z < bb[5] + 0.6) top = Math.max(top, bb[4]);
   }
   const id = nextId++;
-  const palette = Math.floor(Math.random() * shape.palettes.length);
+  const chosen = variant ?? flavour.get(shape.id) ?? -1;
+  const palette = chosen >= 0 ? chosen : Math.floor(Math.random() * shape.palettes.length);
+  warnIfBusy();
   const spin = (): number => (Math.random() - 0.5) * 2;
-  send({ type: 'spawn', id, shapeId: shape.id, palette, x, y: top + 0.5 + Math.random() * 0.4, z, yaw: Math.random() * Math.PI * 2, spin: [spin(), spin(), spin()] });
+  send({ type: 'spawn', id, shapeId: shape.id, palette, x, y: top + 0.5 + Math.random() * 0.4, z, yaw: faceCamera(shape), spin: [spin(), spin(), spin()] });
   pending.set(id, { shape, palette });
   order.push(id);
+  updateStatus();
 }
+
+/** A shape's front is +z; land it roughly facing wherever the camera is looking from. */
+const faceCamera = (shape: ShapeDef) => controls.getAzimuthalAngle() + (shape.facing ?? 0) + (Math.random() - 0.5) * 1.2;
 
 function removeLocal(id: number) {
   if (grabbedId === id) endGrab();
   const v = views.get(id);
-  if (v) { scene.remove(v.mesh, v.lattice); v.dispose(); views.delete(id); }
+  if (v) { scene.remove(v.group); v.dispose(); views.delete(id); }
   pending.delete(id);
   const i = order.indexOf(id);
   if (i >= 0) order.splice(i, 1);
@@ -212,22 +218,70 @@ async function toggleTilt() {
 // ---------- UI ----------
 
 const shelf = $('shelf');
+const variants = $('variants');
+/** Chosen flavour per shape: a palette index, or -1 for a random one each drop. */
+const flavour = new Map<string, number>();
+let selected = SHAPES[0];
+
+const swatch = (p: ShapeDef['palettes'][number]) => {
+  const extra = Object.values(p.colors ?? {}).slice(0, 2);
+  return extra.length ? `linear-gradient(135deg, ${p.color} 0 55%, ${extra.join(', ')})` : p.color;
+};
+
+function showVariants(shape: ShapeDef) {
+  variants.replaceChildren();
+  const label = document.createElement('span');
+  label.className = 'label';
+  label.textContent = shape.name;
+  variants.append(label);
+  const current = flavour.get(shape.id) ?? -1;
+  const chip = (name: string, bg: string, index: number) => {
+    const c = document.createElement('button');
+    c.type = 'button';
+    c.className = 'chip';
+    c.setAttribute('aria-pressed', String(index === current));
+    c.title = `Drop a ${name.toLowerCase()} ${shape.name.toLowerCase()}`;
+    const dot = document.createElement('span');
+    dot.className = 'dot';
+    dot.style.background = bg;
+    c.append(dot, name);
+    c.addEventListener('click', () => { flavour.set(shape.id, index); spawn(shape, undefined, index); showVariants(shape); hideHint(); });
+    variants.append(c);
+  };
+  shape.palettes.forEach((p, i) => chip(p.name, swatch(p), i));
+  chip('Mix', `conic-gradient(${shape.palettes.map((p) => p.color).join(', ')}, ${shape.palettes[0].color})`, -1);
+}
+
 SHAPES.forEach((shape, i) => {
   const b = document.createElement('button');
   b.className = 'shape';
   b.type = 'button';
-  b.title = `${shape.name} (${i + 1})`;
+  b.title = `${shape.name} (${(i + 1) % 10})`;
   const blob = document.createElement('span');
   blob.className = 'blob';
-  const p = shape.palettes[0];
-  blob.style.background = p.top ? `linear-gradient(${p.top.color} 0 34%, ${p.color} 34%)` : p.color;
+  blob.style.background = swatch(shape.palettes[0]);
   const name = document.createElement('span');
   const short = shape.name.replace('Gummy ', '').replace('Jelly ', '');
   name.textContent = short[0].toUpperCase() + short.slice(1);
   b.append(blob, name);
-  b.addEventListener('click', () => { spawn(shape); hideHint(); });
+  b.addEventListener('click', () => {
+    selected = shape;
+    for (const el of shelf.children) el.classList.toggle('selected', el === b);
+    spawn(shape);
+    showVariants(shape);
+    hideHint();
+  });
   shelf.append(b);
 });
+shelf.children[0]?.classList.add('selected');
+showVariants(selected);
+
+let warned = false;
+function warnIfBusy() {
+  if (warned || views.size < 2 || simMs < 12) return;
+  warned = true;
+  toast('Getting crowded. Each extra jelly slows this device down.');
+}
 
 const firm = $<HTMLInputElement>('firm'), damp = $<HTMLInputElement>('damp');
 const firmLabel = (f: number) => (f < 0.2 ? 'custard' : f < 0.45 ? 'jelly' : f < 0.75 ? 'gummy' : 'rubber');
@@ -279,7 +333,7 @@ window.addEventListener('keydown', (e) => {
   else if (k === ' ') { e.preventDefault(); togglePause(); }
   else if (k === 's') toggleSlow();
   else if (k === 'm') toggleMesh();
-  else if (/^[1-9]$/.test(k) && SHAPES[Number(k) - 1]) spawn(SHAPES[Number(k) - 1]);
+  else if (/^[0-9]$/.test(k) && SHAPES[(Number(k) + 9) % 10]) spawn(SHAPES[(Number(k) + 9) % 10]);
 });
 
 let hintGone = false;
@@ -301,7 +355,9 @@ function toast(msg: string) {
 let fps = 60;
 function updateStatus() {
   const n = views.size;
-  $('statusText').textContent = `${n} ${n === 1 ? 'jelly' : 'jellies'} · ${Math.round(fps)} fps`;
+  // First drop of a shape builds its lattice in the worker, up to a couple of seconds for the octopus.
+  const coming = pending.size ? ` · ${pending.size} on the way` : '';
+  $('statusText').textContent = `${n} ${n === 1 ? 'jelly' : 'jellies'}${coming} · ${Math.round(fps)} fps`;
 }
 
 window.addEventListener('resize', stage.resize);
@@ -332,11 +388,8 @@ function frame(now: number) {
   requestAnimationFrame(frame);
 }
 
-// First jellies: a few favourites, staggered so they land near each other.
-const byId = (id: string) => SHAPES.find((s) => s.id === id)!;
-spawn(byId('bear'), { x: -0.8, z: 0.1 });
-spawn(byId('pudding'), { x: 0.8, z: -0.2 });
-setTimeout(() => spawn(byId('cube'), { x: 0.1, z: 0.4 }), 700);
+// One jelly to start. More are one tap away, and each one costs the device real work.
+spawn(SHAPES[0], { x: 0, z: 0 });
 $('status').classList.add('live');
 if (import.meta.env.DEV) {
   Object.assign(window, { jelly: { views, spawn, send, SHAPES, camera, canvas, stats: () => ({ simMs, contacts, fps }) } });

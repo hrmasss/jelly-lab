@@ -14,7 +14,8 @@ function run(label: string, setup: (w: World) => void, frames = 240): World {
   console.log(`[${label}] ${(ms/frames).toFixed(2)} ms/frame, peak contacts ${maxC}\n  ` + out.join('\n  '));
   return w;
 }
-for (const id of ['bear','pudding','cube','ring','star','mochi','heart']) {
+for (const s of SHAPES) {
+  const id = s.id;
   run(`drop ${id}`, w => w.bodies.push(new SoftBody(topology(byId(id)), byId(id).palettes[0], 0, 0.8, 0, 0.3)));
 }
 const stack = run('cube on cube', w => {

@@ -1,4 +1,5 @@
 import { type SDF, sdfGrad } from './sdf.ts';
+import { type Field } from './field.ts';
 
 export interface SurfaceMesh {
   positions: Float32Array;
@@ -13,18 +14,13 @@ const EDGES = [
 ];
 
 /**
- * Naive surface nets over the sdf, sampled every `step` inside [min, max] plus one step of padding.
- * Vertices are then snapped onto the true surface, so the mesh is smooth even at coarse steps.
+ * Naive surface nets over a baked distance grid. Vertices are then snapped onto the surface of `project`
+ * (the shape's own formula when it is cheap, the baked grid when it is not), so the mesh is smooth even at coarse steps.
  */
-export function surfaceNets(sdf: SDF, min: number[], max: number[], step: number): SurfaceMesh {
-  const o = [min[0] - step * 1.5, min[1] - step * 1.5, min[2] - step * 1.5];
-  const n = [0, 1, 2].map((a) => Math.ceil((max[a] - min[a]) / step) + 4);
-  const [nx, ny, nz] = n;
-  const vals = new Float32Array(nx * ny * nz);
-  for (let k = 0; k < nz; k++)
-    for (let j = 0; j < ny; j++)
-      for (let i = 0; i < nx; i++)
-        vals[i + nx * (j + ny * k)] = sdf(o[0] + i * step, o[1] + j * step, o[2] + k * step);
+export function surfaceNets(field: Field, project: SDF): SurfaceMesh {
+  const { o, step, v: vals } = field;
+  const [nx, ny, nz] = field.n;
+  const sdf = project;
 
   const cx = nx - 1, cy = ny - 1, cz = nz - 1;
   const cellVert = new Int32Array(cx * cy * cz).fill(-1);

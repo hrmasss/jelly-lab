@@ -1,6 +1,7 @@
 import { type ShapeDef } from './shapes.ts';
 import { sdfGrad } from './sdf.ts';
 import { surfaceNets } from './mesher.ts';
+import { type Field, bakeField } from './field.ts';
 
 /** Everything about a shape that does not change per instance. Built once, shared by every copy. */
 export interface Topology {
@@ -23,13 +24,22 @@ export interface Topology {
   contactNodes: Int32Array;
   /** Rest-space lookup grid: the tets born in each lattice cell. */
   grid: { o: [number, number, number]; h: number; dims: [number, number, number]; start: Int32Array; tets: Int32Array };
-  skin: {
-    rest: Float32Array;
-    index: Uint32Array;
-    tet: Int32Array;
-    /** 4 weights per vertex. */
-    bary: Float32Array;
-  };
+  /** The shape's distance on a grid, reaching a cell past the lattice. Contact reads this, not the formula. */
+  field: Field;
+  skin: SkinPart;
+  /** Small solid meshes riding inside the jelly: seeds, eyes. */
+  inclusions: (SkinPart & { color: string; roughness: number })[];
+}
+
+/** A mesh whose vertices follow the lattice: each vertex tied to one tet with 4 weights. */
+export interface SkinPart {
+  rest: Float32Array;
+  index: Uint32Array;
+  tet: Int32Array;
+  bary: Float32Array;
+  /** Per-vertex paint masks, `channels` per vertex, when the shape paints itself. */
+  masks?: Float32Array;
+  channels?: number;
 }
 
 // Five-tet split of a cube, two mirrored variants so neighbouring cells share face diagonals.
@@ -186,34 +196,55 @@ function build(shape: ShapeDef): Topology {
   keptCell.forEach((c, t) => { cellTets[fill[c]++] = t; });
   const grid = { o, h, dims, start, tets: cellTets };
 
-  // 7. Render skin, each vertex tied to the tet that contains it (or the nearest one).
-  const mesh = surfaceNets(f, shape.min, shape.max, shape.skin);
-  const nv = mesh.positions.length / 3;
-  const skinTet = new Int32Array(nv);
-  const skinBary = new Float32Array(nv * 4);
+  // 7. Render skin and inclusions, each vertex tied to the tet that contains it.
   const b = new Float64Array(4);
-  for (let v = 0; v < nv; v++) {
-    const X = mesh.positions[v * 3], Y = mesh.positions[v * 3 + 1], Z = mesh.positions[v * 3 + 2];
-    let best = -1, bestScore = -Infinity;
-    const ci = Math.floor((X - o[0]) / h), cj = Math.floor((Y - o[1]) / h), ck = Math.floor((Z - o[2]) / h);
-    for (let dk = -1; dk <= 1; dk++)
-      for (let dj = -1; dj <= 1; dj++)
-        for (let di = -1; di <= 1; di++) {
-          const i = ci + di, j = cj + dj, k = ck + dk;
-          if (i < 0 || j < 0 || k < 0 || i >= cx || j >= cy || k >= cz) continue;
-          const c = i + cx * (j + cy * k);
-          for (let s = start[c]; s < start[c + 1]; s++) {
-            const t = cellTets[s];
-            baryRest(restF, tets, invDm, t, X, Y, Z, b);
-            const score = Math.min(b[0], b[1], b[2], b[3]);
-            if (score > bestScore) { bestScore = score; best = t; }
+  const embed = (points: Float32Array) => {
+    const nv = points.length / 3;
+    const tet = new Int32Array(nv);
+    const bary = new Float32Array(nv * 4);
+    for (let v = 0; v < nv; v++) {
+      const X = points[v * 3], Y = points[v * 3 + 1], Z = points[v * 3 + 2];
+      let best = -1, bestScore = -Infinity;
+      const ci = Math.floor((X - o[0]) / h), cj = Math.floor((Y - o[1]) / h), ck = Math.floor((Z - o[2]) / h);
+      for (let dk = -1; dk <= 1; dk++)
+        for (let dj = -1; dj <= 1; dj++)
+          for (let di = -1; di <= 1; di++) {
+            const i = ci + di, j = cj + dj, k = ck + dk;
+            if (i < 0 || j < 0 || k < 0 || i >= cx || j >= cy || k >= cz) continue;
+            const c = i + cx * (j + cy * k);
+            for (let s = start[c]; s < start[c + 1]; s++) {
+              const t = cellTets[s];
+              baryRest(restF, tets, invDm, t, X, Y, Z, b);
+              const score = Math.min(b[0], b[1], b[2], b[3]);
+              if (score > bestScore) { bestScore = score; best = t; }
+            }
           }
-        }
-    if (best < 0) best = 0;
-    skinTet[v] = best;
-    baryRest(restF, tets, invDm, best, X, Y, Z, b);
-    skinBary.set(b, v * 4);
+      if (best < 0) best = 0;
+      tet[v] = best;
+      baryRest(restF, tets, invDm, best, X, Y, Z, b);
+      bary.set(b, v * 4);
+    }
+    return { tet, bary };
+  };
+  const field = bakeField(f, shape.min, shape.max, shape.skin, h * 1.3);
+  // Snap skin vertices with the real formula when it is cheap; the octopus's costs ~20 us a call, so it uses the grid.
+  const t0 = performance.now();
+  for (let i = 0; i < 200; i++) f(shape.min[0] + (i % 7) * 0.05, shape.min[1] + (i % 5) * 0.05, shape.min[2] + (i % 3) * 0.05);
+  const slow = (performance.now() - t0) / 200 > 0.004;
+  const mesh = surfaceNets(field, slow ? (x, y, z) => field.sample(x, y, z) : f);
+  const skin: SkinPart = { rest: mesh.positions, index: mesh.indices, ...embed(mesh.positions) };
+  if (shape.paint) {
+    const { channels, masks } = shape.paint;
+    const nv = mesh.positions.length / 3;
+    const out = new Float32Array(nv * channels);
+    const grad = (x: number, y: number, z: number, g: number[]) => field.grad(x, y, z, g);
+    for (let v = 0; v < nv; v++) out.set(masks(mesh.positions[v * 3], mesh.positions[v * 3 + 1], mesh.positions[v * 3 + 2], grad), v * channels);
+    skin.masks = out;
+    skin.channels = channels;
   }
+  const inclusions = (shape.inclusions?.() ?? []).map((inc) => ({
+    rest: inc.positions, index: inc.indices, color: inc.color, roughness: inc.roughness, ...embed(inc.positions),
+  }));
 
   return {
     shape, n, rest: restF, mass, restCom: [mx / mt, my / mt, mz / mt],
@@ -222,7 +253,9 @@ function build(shape: ShapeDef): Topology {
     surfOffset,
     contactNodes: new Int32Array(contact),
     grid,
-    skin: { rest: mesh.positions, index: mesh.indices, tet: skinTet, bary: skinBary },
+    field,
+    skin,
+    inclusions,
   };
 }
 

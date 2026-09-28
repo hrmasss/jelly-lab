@@ -1,4 +1,5 @@
 import { type WorldParams } from './world.ts';
+import { type SkinPart } from './lattice.ts';
 
 /** What the page needs to draw a shape: its lattice wiring and the skin tied to it. Sent once per shape. */
 export interface ShapeMesh {
@@ -7,7 +8,8 @@ export interface ShapeMesh {
   cell: number;
   tets: Int32Array;
   edges: Int32Array;
-  skin: { rest: Float32Array; index: Uint32Array; tet: Int32Array; bary: Float32Array };
+  skin: SkinPart;
+  inclusions: (SkinPart & { color: string; roughness: number })[];
 }
 
 export type ToSim =

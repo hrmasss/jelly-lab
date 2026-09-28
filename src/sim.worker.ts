@@ -30,7 +30,7 @@ self.onmessage = (e: MessageEvent<ToSim>) => {
         sent.add(shape.id);
         const mesh: ShapeMesh = {
           shapeId: shape.id, n: topo.n, cell: shape.cell, tets: topo.tets, edges: topo.edges,
-          skin: { rest: topo.skin.rest, index: topo.skin.index, tet: topo.skin.tet, bary: topo.skin.bary },
+          skin: topo.skin, inclusions: topo.inclusions,
         };
         post({ type: 'shape', mesh });
       }

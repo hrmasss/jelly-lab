@@ -28,7 +28,7 @@ export function createStage(canvas: HTMLCanvasElement, fence: number, beforeCont
   scene.environmentIntensity = 0.6;
 
   const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 60);
-  camera.position.set(0, 3.3, 5.6);
+  camera.position.set(0, 2.7, 4.6);
 
   const key = new THREE.DirectionalLight('#fff4e6', 3.2);
   key.position.set(-2.5, 7, 2.5);

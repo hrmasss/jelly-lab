@@ -60,6 +60,17 @@ export function sdStar2(px: number, py: number, r: number, rf: number) {
   return len2(px - bax * h, py - bay * h) * Math.sign(py * bax - px * bay);
 }
 
+/** Circular sector ("pie") in 2D: apex at the origin, opening along +y, half angle a, radius r. */
+export function sdPie2(px: number, py: number, a: number, r: number) {
+  px = Math.abs(px);
+  const cx = Math.sin(a), cy = Math.cos(a);
+  const l = len2(px, py) - r;
+  const d = clamp(px * cx + py * cy, 0, r);
+  const m = len2(px - cx * d, py - cy * d);
+  const s = Math.sign(cy * px - cx * py) || 1;
+  return Math.max(l, m * s);
+}
+
 /** Heart in 2D, tip at the origin, lobes up to y ~ 1.1. */
 export function sdHeart2(px: number, py: number) {
   px = Math.abs(px);

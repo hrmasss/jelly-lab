@@ -1,6 +1,6 @@
 # Jelly Lab
 
-A soft body sandbox in the browser. Drop gummy bears, puddings, jelly cubes and friends on a plate, then squish them, throw them and pile them up.
+A soft body sandbox in the browser. It starts with one gummy bear; drop in watermelon slices, pineapple rings, octopuses, puddings and more, then squish them, throw them and pile them up. Each jelly costs the device real work, so add them as you like.
 
 Runs on desktop and phone. On a phone, "Tilt with phone" slides everything around the plate.
 
@@ -15,7 +15,8 @@ npm run dev
 |---|---|
 | Drag a jelly | Grab and squish it. Let go mid-drag to throw it. |
 | Drag empty space | Look around. Scroll or pinch to zoom. |
-| `1`–`7` | Drop a shape |
+| `1`–`9`, `0` | Drop a shape |
+| Flavour chips | Pick a variant for the selected shape, or Mix for a random one each drop |
 | `N` | Nudge everything |
 | `C` | Clear the plate |
 | `S` / `M` / `Space` | Quarter speed / show lattice / pause |
@@ -30,7 +31,9 @@ shape formula (SDF)
 
 | Part | File | What it does |
 |---|---|---|
-| Shapes | `src/engine/shapes.ts` | Each jelly is a signed distance function plus palettes. Adding a shape is one entry. |
+| Shapes | `src/engine/shapes.ts` | Each jelly is a signed distance function plus palettes, an optional paint function, and optional solid inclusions (seeds, eyes). Adding a shape is one entry. |
+| Originals | `src/engine/originals.ts` | Gummy bear, pineapple ring and octopus, rebuilt from the first soft body pages' shape descriptions. |
+| Field | `src/engine/field.ts` | Each shape's distance baked onto a grid once, sampled only near the surface. Meshing and contact read it. |
 | Lattice | `src/engine/lattice.ts` | Builds the tetrahedral lattice, the skin, and each node's offset to the true surface. Cached per shape. |
 | Body | `src/engine/body.ts` | XPBD edge and volume constraints, floor and fence, damping that only resists stretching, rigid-frame fit. |
 | World | `src/engine/world.ts` | Substep loop, grabbing, jelly-on-jelly contact. |
